@@ -11,6 +11,57 @@ import (
 var p = fmt.Println
 
 
+// =========================
+type Todo struct {
+  Con redis.Conn
+  Data []string
+}
+
+func NewTodo() *Todo{
+  todo := new(Todo)
+  c, err := redis.Dial("tcp", "slackbot-redis:6379")
+  if err != nil {
+    panic(err)
+  }
+  //defer c.Close()
+
+  tasksString, err := redis.String(c.Do("GET", "todo"))
+  if err != nil {
+    tasksString = "[]";
+  }
+  err = json.Unmarshal(([]byte)(tasksString), &todo.Data)
+  if err != nil {
+    todo.Data = make([]string, 0)
+  }
+  todo.Con = c
+  return todo
+}
+func (todo *Todo)Close() {
+  todo.Con.Close()
+}
+func (todo *Todo) add(message string) bool {
+  todo.Data = append(todo.Data, message)
+  // ===============
+  tasksBytes, _ := json.Marshal(todo.Data)
+  _, _ = todo.Con.Do("SET", "todo", tasksBytes) 
+  // ===============
+  return true
+}
+func (todo *Todo) del(no int) bool {
+  todo.Data = append(todo.Data[:no], todo.Data[no + 1:]...)
+  // ===============
+  tasksBytes, _ := json.Marshal(todo.Data)
+  _, _ = todo.Con.Do("SET", "todo", tasksBytes) 
+  // ===============
+  return true
+}
+
+func (todo *Todo) list() []string {
+  return todo.Data
+}
+// =========================
+
+
 func contains (str string, list []string) bool {
   for _, v := range(list) {
     if v == str {
@@ -46,100 +97,35 @@ func validateParams(text string) bool {
 
 
 func add(message string) string {
-  // ===============
-  c, err := redis.Dial("tcp", "slackbot-redis:6379")
-  if err != nil {
-    panic(err)
+  todo := NewTodo()
+  defer todo.Close()
+  if todo.add(message) {
+    return "追加しました"
   }
-  defer c.Close()
-
-  tasksString, err := redis.String(c.Do("GET", "todo"))
-  if err != nil {
-    tasksString = "[]";
-  }
-  var tasks []string
-  err = json.Unmarshal(([]byte)(tasksString), &tasks)
-  if err != nil {
-    tasks = make([]string, 0)
-  }
-  // ===============
-  tasks = append(tasks, message)
-
-  p(tasks)
-  // ===============
-  tasksBytes, err := json.Marshal(tasks)
-  p(tasksBytes)
-  _, err = c.Do("SET", "todo", tasksBytes) 
-  p(err) //nil
-  // ===============
-
-  return "追加しました"
+  return "何かおかしいです"
 }
 func del(message string) string {
-  // ===============
-  c, err := redis.Dial("tcp", "slackbot-redis:6379")
-  if err != nil {
-    panic(err)
-  }
-  defer c.Close()
+  todo := NewTodo()
+  defer todo.Close()
 
-  tasksString, err := redis.String(c.Do("GET", "todo"))
-  if err != nil {
-    p("get error")
-    tasksString = "[]";
-  }
-  var tasks []string
-  err = json.Unmarshal(([]byte)(tasksString), &tasks)
-  if err != nil {
-    p("error unmarshal")
-    tasks = make([]string, 0)
-  }
-  // ===============
-
-  n, err := strconv.Atoi(message)
+  no, err := strconv.Atoi(message)
   if err != nil {
     return "引数のエラーです"
   }
-  if n  >= len(tasks) {
-    return "引数のエラーです"
+
+  if todo.del(no) {
+    return "削除しました"
   }
-  tasks = append(tasks[:n], tasks[n+1:]...)
-
-  p(tasks)
-  // ===============
-  tasksBytes, err := json.Marshal(tasks)
-  p(tasksBytes)
-  _, err = c.Do("SET", "todo", tasksBytes) 
-  p(err) //nil
-  // ===============
-
-  return "削除しました"
+  return "何かおかしいです"
 }
 
 func list() string {
-  // ===============
-  c, err := redis.Dial("tcp", "slackbot-redis:6379")
-  if err != nil {
-    panic(err)
-  }
-  defer c.Close()
-
-  tasksString, err := redis.String(c.Do("GET", "todo"))
-  if err != nil {
-    p("get error")
-    tasksString = "[]";
-  }
-  var tasks []string
-  err = json.Unmarshal(([]byte)(tasksString), &tasks)
-  if err != nil {
-    p("error unmarshal")
-    tasks = make([]string, 0)
-  }
-  // ===============
+  todo := NewTodo()
+  defer todo.Close()
 
   ret := "todo:\n"
-  for i, v := range tasks {
-    ret += fmt.Sprintf("- %d %s\n", i, v)
+  for i, v := range todo.list() {
+    ret += fmt.Sprintf("* [%d] %s\n", i, v)
   }
   return ret
 }
