@@ -5,8 +5,6 @@ import (
   "net/http"
   "strings"
   "github.com/garyburd/redigo/redis"
-  "encoding/json"
-  "strconv"
   "regexp"
 )
 var p = fmt.Println
@@ -25,7 +23,7 @@ func NewTodo() *Todo{
     panic(err)
   }
   //defer c.Close()
-
+/*
   tasksString, err := redis.String(c.Do("GET", "todo"))
   if err != nil {
     tasksString = "[]";
@@ -34,6 +32,7 @@ func NewTodo() *Todo{
   if err != nil {
     todo.Data = make([]string, 0)
   }
+*/
   todo.Con = c
   return todo
 }
@@ -41,18 +40,18 @@ func (todo *Todo)Close() {
   todo.Con.Close()
 }
 func (todo *Todo) add(message string) bool {
-  todo.Data = append(todo.Data, message)
-  // ===============
-  tasksBytes, _ := json.Marshal(todo.Data)
-  _, _ = todo.Con.Do("SET", "todo", tasksBytes) 
-  // ===============
+  _, err := todo.Con.Do("LPUSH", "todo", message) 
+  if err != nil {
+    p(err)
+  }
   return true
 }
-func (todo *Todo) del(no int) bool {
-  todo.Data = append(todo.Data[:no], todo.Data[no + 1:]...)
-  // ===============
-  tasksBytes, _ := json.Marshal(todo.Data)
-  _, _ = todo.Con.Do("SET", "todo", tasksBytes) 
+func (todo *Todo) del(message string) bool {
+  _, err := todo.Con.Do("LREM", "todo", 0, message) 
+  if err != nil {
+    p(err)
+  }
+ 
   // ===============
   return true
 }
@@ -70,7 +69,12 @@ func (todo *Todo) delFromString(target string) bool {
 
 
 func (todo *Todo) list() []string {
-  return todo.Data
+  tasksStrings, err := redis.Strings(todo.Con.Do("LRANGE", "todo", 0, -1))
+  if err != nil {
+    p(err)
+  }
+ 
+  return tasksStrings
 }
 // =========================
 
@@ -126,12 +130,7 @@ func del(message string) string {
   todo := NewTodo()
   defer todo.Close()
 
-  no, err := strconv.Atoi(message)
-  if err != nil {
-    return "引数のエラーです"
-  }
-
-  if todo.del(no) {
+  if todo.del(message) {
     return "削除しました"
   }
   return "何かおかしいです"
@@ -173,7 +172,10 @@ func process(text string) (string, bool) {
     message = add(s);
   } else if s, err = regMatch(text, `一覧`, 0); err != false {
     message = list();
+  } else if s, err = regMatch(text, `(.*)(かった|買った|かいました|買いました)`, 1); err != false {
+    message = del(s);
   }
+
   // =======================
 
 /*
