@@ -7,6 +7,7 @@ import (
   "github.com/garyburd/redigo/redis"
   "encoding/json"
   "strconv"
+  "regexp"
 )
 var p = fmt.Println
 
@@ -55,6 +56,18 @@ func (todo *Todo) del(no int) bool {
   // ===============
   return true
 }
+/*
+func (todo *Todo) delFromString(target string) bool {
+  for _, v := range(todo.Data) {
+  }
+  // ===============
+  tasksBytes, _ := json.Marshal(todo.Data)
+  _, _ = todo.Con.Do("SET", "todo", tasksBytes) 
+  // ===============
+  return true
+}
+*/
+
 
 func (todo *Todo) list() []string {
   return todo.Data
@@ -80,6 +93,11 @@ func getCommand(text string) string {
 func getMessage(text string) string {
   return strings.Split(text, " ")[2]
 }
+
+func sentence1(text string){
+  regexp.MustCompile(``)
+}
+
 func validateParams(text string) bool {
   if len(strings.Split(text, " ")) < 2 {
     return false
@@ -130,18 +148,35 @@ func list() string {
   return ret
 }
 
-
-
-
 func parseText(text string) (command string, post_text string) {
   command = getCommand(text)
   post_text = getMessage(text)
   return
 }
 
+func regMatch(text string,pattern string, index int) (string, bool) {
+  add := regexp.MustCompile(pattern);
+  sl := add.FindStringSubmatch(text)
+  if len(sl) != 0 {
+    return sl[index], true;
+  } else {
+    return "", false
+  }
+}
+
 func process(text string) (string, bool) {
   var message string
+  // =======================
+  var s string
+  var err bool
+  if s, err = regMatch(text, `(.*)が(無い|ない)`, 1); err != false {
+    message = add(s);
+  } else if s, err = regMatch(text, `一覧`, 0); err != false {
+    message = list();
+  }
+  // =======================
 
+/*
   if !validateParams(text) {
     return "unknown command", false
   }
@@ -150,10 +185,9 @@ func process(text string) (string, bool) {
     case "del": message = del(getMessage(text))
     case "list": message = list()
   }
+*/
   return message, true
 }
-
-
 
 func todoListBot(w http.ResponseWriter, r *http.Request) {
   checkUser(w, r, func(text string, channel_name string) {
