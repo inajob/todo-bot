@@ -3,7 +3,9 @@ package main
 import (
   "fmt"
   "net/http"
+  "os"
   "strings"
+  "strconv"
   "github.com/garyburd/redigo/redis"
   "regexp"
 )
@@ -18,7 +20,11 @@ type Todo struct {
 
 func NewTodo() *Todo{
   todo := new(Todo)
-  c, err := redis.Dial("tcp", "slackbot-redis:6379")
+  redisUrl := os.Getenv("SLACK_ADDR")
+  if len(redisUrl) == 0 {
+    redisUrl = "slackbot-redis:6379"
+  }
+  c, err := redis.Dial("tcp", redisUrl)
   if err != nil {
     panic(err)
   }
@@ -34,24 +40,25 @@ func NewTodo() *Todo{
   }
 */
   todo.Con = c
+  todo.storeList();
   return todo
 }
 func (todo *Todo)Close() {
   todo.Con.Close()
 }
 func (todo *Todo) add(message string) bool {
-  _, err := todo.Con.Do("LPUSH", "todo", message) 
+  _, err := todo.Con.Do("LPUSH", "todo", message)
   if err != nil {
     p(err)
   }
   return true
 }
 func (todo *Todo) del(message string) bool {
-  _, err := todo.Con.Do("LREM", "todo", 0, message) 
+  _, err := todo.Con.Do("LREM", "todo", 0, message)
   if err != nil {
     p(err)
   }
- 
+
   // ===============
   return true
 }
@@ -73,8 +80,15 @@ func (todo *Todo) list() []string {
   if err != nil {
     p(err)
   }
- 
+
   return tasksStrings
+}
+// =========================
+func (todo *Todo) storeList() {
+  todo.Data = nil;
+  for _, v := range todo.list() {
+    todo.Data = append(todo.Data, v);
+  }
 }
 // =========================
 
@@ -130,6 +144,10 @@ func del(message string) string {
   todo := NewTodo()
   defer todo.Close()
 
+  if v, e := strconv.Atoi(message); e == nil {
+    message = todo.Data[v];
+  }
+
   if todo.del(message) {
     return "削除しました"
   }
@@ -169,11 +187,12 @@ func process(text string) (string, bool) {
   var s string
   var err bool
   if s, err = regMatch(text, `(.*)が(無い|ない)`, 1); err != false {
-    message = add(s);
+    message = add(s) + "\n" + list();
   } else if s, err = regMatch(text, `一覧`, 0); err != false {
     message = list();
   } else if s, err = regMatch(text, `(.*)(かった|買った|かいました|買いました)`, 1); err != false {
-    message = del(s);
+
+    message = del(s) + "\n" + list();
   }
 
   // =======================
